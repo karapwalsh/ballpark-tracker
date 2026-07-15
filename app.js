@@ -191,10 +191,12 @@ function matchesFilters(venue) {
 }
 
 function renderAll() {
-  // stats
-  const totalVisited = VENUES.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
+  // stats — only the active/current stadiums count toward the main "of 30" stat;
+  // former ballparks (current: false) still get tracked below but don't count here.
+  const currentVenues = VENUES.filter(v => v.current !== false);
+  const totalVisited = currentVenues.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
   visitedCountEl.textContent = totalVisited;
-  progressFill.style.width = `${Math.round((totalVisited / VENUES.length) * 100)}%`;
+  progressFill.style.width = `${Math.round((totalVisited / currentVenues.length) * 100)}%`;
 
   // divisions
   divisionsContainer.innerHTML = "";
@@ -210,6 +212,13 @@ function renderAll() {
     const h3 = document.createElement("h3");
     h3.textContent = division;
     section.appendChild(h3);
+
+    if (division === "Former Ballparks") {
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:0.78rem;color:var(--muted);margin:-6px 0 12px 2px;";
+      note.textContent = "Demolished/replaced stadiums — tracked here for fun, not counted in the 30 above.";
+      section.appendChild(note);
+    }
 
     const grid = document.createElement("div");
     grid.className = "grid";
