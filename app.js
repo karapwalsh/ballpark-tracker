@@ -7,7 +7,7 @@ import { VENUES, DIVISION_ORDER, ENTITY_LABEL_PLURAL } from "./venues.js";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, doc, setDoc, deleteField, onSnapshot, collection, serverTimestamp
@@ -78,16 +78,29 @@ let currentFilter = "all";
 let searchTerm = "";
 
 // ---------- Auth ----------
+// Uses a full-page redirect rather than a popup: popups depend on third-party
+// cookies / window.opener messaging between the firebaseapp.com auth handler and
+// your app's domain, which many browsers now block by default (Safari, Brave,
+// Firefox strict mode, Chrome with tracking protection) — that's what causes the
+// "requested action is invalid" error for other people signing in. Redirect works
+// the same everywhere because it's just a normal page navigation.
 loginBtn.addEventListener("click", async () => {
   if (!isConfigured()) return;
   const provider = new GoogleAuthProvider();
   try {
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
   } catch (err) {
     console.error(err);
     toast("Sign-in failed: " + err.message);
   }
 });
+
+if (isConfigured()) {
+  getRedirectResult(auth).catch((err) => {
+    console.error(err);
+    toast("Sign-in failed: " + err.message);
+  });
+}
 
 function renderHeaderRight() {
   if (!currentUser) { headerRight.innerHTML = ""; return; }
