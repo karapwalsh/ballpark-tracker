@@ -75,6 +75,8 @@ export const VENUES = [
   { id: "fultoncountystadium", name: "Atlanta–Fulton County Stadium (1966–1996)", group: "Atlanta Braves", division: "Former Ballparks", location: "Atlanta, GA", current: false },
   { id: "qualcomm", name: "Qualcomm Stadium / Jack Murphy Stadium (MLB use to 2003)", group: "San Diego Padres", division: "Former Ballparks", location: "San Diego, CA", current: false },
   { id: "buschstadium2", name: "Busch Stadium II (1966–2005)", group: "St. Louis Cardinals", division: "Former Ballparks", location: "St. Louis, MO", current: false },
+  { id: "turnerfield", name: "Turner Field (1997–2016)", group: "Atlanta Braves", division: "Former Ballparks", location: "Atlanta, GA", current: false },
+  { id: "oaklandcoliseum", name: "Oakland Coliseum (1968–2024)", group: "Oakland Athletics", division: "Former Ballparks", location: "Oakland, CA", current: false },
 ];
 
 export const DIVISION_ORDER = [
