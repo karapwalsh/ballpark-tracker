@@ -13,6 +13,46 @@ export const APP_TITLE = "Ballpark Tracker";
 export const ENTITY_LABEL = "ballpark"; // used in stats text: "of 30 ballparks visited"
 export const ENTITY_LABEL_PLURAL = "ballparks";
 
+// Team logo lookup — keyed by the exact team name used in each venue's `group`
+// field. IDs are MLB's own official numeric team IDs (from statsapi.mlb.com),
+// and the images are hotlinked from MLB's own logo CDN (the same one MLB.com
+// itself uses) rather than files stored in this repo — used here for a personal,
+// non-commercial tracker. If a logo ever fails to load, the card just falls back
+// to the ⚾ emoji (see the `onerror` handling in app.js).
+export const TEAM_LOGOS = {
+  "Baltimore Orioles": 110,
+  "Boston Red Sox": 111,
+  "New York Yankees": 147,
+  "Tampa Bay Rays": 139,
+  "Toronto Blue Jays": 141,
+  "Chicago White Sox": 145,
+  "Cleveland Guardians": 114,
+  "Detroit Tigers": 116,
+  "Kansas City Royals": 118,
+  "Minnesota Twins": 142,
+  "Houston Astros": 117,
+  "Los Angeles Angels": 108,
+  "Athletics": 133,
+  "Oakland Athletics": 133,
+  "Seattle Mariners": 136,
+  "Texas Rangers": 140,
+  "Atlanta Braves": 144,
+  "Miami Marlins": 146,
+  "New York Mets": 121,
+  "Philadelphia Phillies": 143,
+  "Washington Nationals": 120,
+  "Chicago Cubs": 112,
+  "Cincinnati Reds": 113,
+  "Milwaukee Brewers": 158,
+  "Pittsburgh Pirates": 134,
+  "St. Louis Cardinals": 138,
+  "Arizona Diamondbacks": 109,
+  "Colorado Rockies": 115,
+  "Los Angeles Dodgers": 119,
+  "San Diego Padres": 135,
+  "San Francisco Giants": 137,
+};
+
 export const VENUES = [
   // AL East
   { id: "orioles", name: "Oriole Park at Camden Yards", group: "Baltimore Orioles", division: "AL East", location: "Baltimore, MD", current: true },
@@ -77,6 +117,12 @@ export const VENUES = [
   { id: "buschstadium2", name: "Busch Stadium II (1966–2005)", group: "St. Louis Cardinals", division: "Former Ballparks", location: "St. Louis, MO", current: false },
   { id: "turnerfield", name: "Turner Field (1997–2016)", group: "Atlanta Braves", division: "Former Ballparks", location: "Atlanta, GA", current: false },
   { id: "oaklandcoliseum", name: "Oakland Coliseum (1968–2024)", group: "Oakland Athletics", division: "Former Ballparks", location: "Oakland, CA", current: false },
+
+  // Relocated franchises — parks tied to a team's home before the whole franchise
+  // moved cities (not just a same-city rebuild). Only one MLB team has relocated
+  // since 1972, so this list is naturally short.
+  { id: "olympicstadium", name: "Olympic Stadium (Montreal Expos, 1977–2004)", group: "Montreal Expos — became the Washington Nationals in 2005", division: "Former Ballparks", location: "Montreal, QC", current: false },
+  { id: "rfkstadium", name: "RFK Stadium (Washington Nationals, 2005–2007)", group: "Washington Nationals", division: "Former Ballparks", location: "Washington, DC", current: false },
 ];
 
 export const DIVISION_ORDER = [

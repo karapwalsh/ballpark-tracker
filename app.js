@@ -3,7 +3,7 @@
 // Each signed-in user reads/writes only their own documents at users/{uid}/visits/{venueId}.
 
 import { firebaseConfig, isConfigured } from "./firebase-config.js";
-import { VENUES, DIVISION_ORDER, ENTITY_LABEL_PLURAL } from "./venues.js";
+import { VENUES, DIVISION_ORDER, ENTITY_LABEL_PLURAL, TEAM_LOGOS } from "./venues.js";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
@@ -280,8 +280,12 @@ function renderCard(venue) {
 
   const photo = document.createElement("div");
   photo.className = "card-photo";
+  const logoId = TEAM_LOGOS[venue.group];
   if (photoURL) {
     photo.innerHTML = `<img src="${photoURL}" alt="${venue.name}">`;
+  } else if (logoId) {
+    // Falls back to the ⚾ emoji if the logo CDN ever fails to load.
+    photo.innerHTML = `<img src="https://www.mlbstatic.com/team-logos/${logoId}.svg" alt="${venue.group}" style="object-fit:contain;padding:14px;background:#fff;" onerror="this.outerHTML='⚾';">`;
   } else {
     photo.textContent = "⚾";
   }
