@@ -1,11 +1,9 @@
-// app.js — Broadway Tracker
+// app.js — Ballpark Tracker
 // Firebase Auth (Google sign-in) + Firestore (per-user data) + Storage (photos).
-// Each signed-in user reads/writes only their own documents at
-// users/{uid}/{COLLECTION_NAME}/{venueId} — a separate collection from the
-// Ballpark Tracker so the two apps' data never mixes, even in the same project.
+// Each signed-in user reads/writes only their own documents at users/{uid}/visits/{venueId}.
 
 import { firebaseConfig, isConfigured } from "./firebase-config.js";
-import { VENUES, DIVISION_ORDER, ENTITY_LABEL_PLURAL, COLLECTION_NAME, STORAGE_PREFIX } from "./venues.js";
+import { VENUES, DIVISION_ORDER, ENTITY_LABEL_PLURAL, TEAM_LOGOS } from "./venues.js";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
@@ -29,10 +27,8 @@ const searchInput = document.getElementById("search-input");
 const chips = document.querySelectorAll(".chip");
 const visitedCountEl = document.getElementById("visited-count");
 const progressFill = document.getElementById("progress-fill");
-const lastUpdatedEl = document.getElementById("last-updated");
+const formerCountEl = document.getElementById("former-count");
 const exportBtn = document.getElementById("export-btn");
-const importBtn = document.getElementById("import-btn");
-const importInput = document.getElementById("import-input");
 
 const modalOverlay = document.getElementById("modal-overlay");
 const modalTitle = document.getElementById("modal-title");
@@ -89,8 +85,8 @@ let searchTerm = "";
 // ---------- Visits array helpers ----------
 // Each venue doc can hold multiple visits: { visited, visits: [{id,date,opponent,
 // score,withWho,notes,photoURL}], updatedAt }. Older docs saved before this feature
-// existed (including anything from Import) have those same fields at the top level
-// instead of in an array — this reads either shape so nothing gets lost.
+// existed have those same fields at the top level instead of in an array — this
+// reads either shape so nothing you already saved gets lost.
 function getVisitsArray(venueId) {
   const v = visitsData[venueId] || {};
   if (Array.isArray(v.visits)) return v.visits;
@@ -195,7 +191,7 @@ if (isConfigured()) {
 // ---------- Firestore sync ----------
 function subscribeToVisits(uid) {
   if (unsubscribeVisits) unsubscribeVisits();
-  const visitsCol = collection(db, "users", uid, COLLECTION_NAME);
+  const visitsCol = collection(db, "users", uid, "visits");
   unsubscribeVisits = onSnapshot(visitsCol, (snap) => {
     visitsData = {};
     snap.forEach((d) => { visitsData[d.id] = d.data(); });
@@ -207,9 +203,10 @@ function subscribeToVisits(uid) {
 }
 
 async function saveVisit(venueId, data) {
-  const ref_ = doc(db, "users", currentUser.uid, COLLECTION_NAME, venueId);
+  const ref_ = doc(db, "users", currentUser.uid, "visits", venueId);
   await setDoc(ref_, { ...data, updatedAt: serverTimestamp() }, { merge: false });
 }
+
 
 // ---------- Quick toggle from card ----------
 async function toggleVisited(venueId, checked) {
@@ -237,10 +234,18 @@ function matchesFilters(venue) {
 }
 
 function renderAll() {
-  // stats
-  const totalVisited = VENUES.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
+  // stats — only the active/current stadiums count toward the main "of 30" stat;
+  // former ballparks (current: false) still get tracked below but don't count here.
+  const currentVenues = VENUES.filter(v => v.current !== false);
+  const totalVisited = currentVenues.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
   visitedCountEl.textContent = totalVisited;
-  progressFill.style.width = `${Math.round((totalVisited / VENUES.length) * 100)}%`;
+  progressFill.style.width = `${Math.round((totalVisited / currentVenues.length) * 100)}%`;
+
+  const formerVenues = VENUES.filter(v => v.current === false);
+  const formerVisited = formerVenues.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
+  formerCountEl.textContent = formerVisited > 0
+    ? `+ ${formerVisited} of ${formerVenues.length} former ballparks`
+    : "";
 
   // divisions
   divisionsContainer.innerHTML = "";
@@ -256,6 +261,13 @@ function renderAll() {
     const h3 = document.createElement("h3");
     h3.textContent = division;
     section.appendChild(h3);
+
+    if (division === "Former Ballparks") {
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:0.78rem;color:var(--muted);margin:-6px 0 12px 2px;";
+      note.textContent = "Demolished/replaced stadiums — tracked here for fun, not counted in the 30 above.";
+      section.appendChild(note);
+    }
 
     const grid = document.createElement("div");
     grid.className = "grid";
@@ -281,10 +293,14 @@ function renderCard(venue) {
 
   const photo = document.createElement("div");
   photo.className = "card-photo";
+  const logoId = TEAM_LOGOS[venue.group];
   if (photoURL) {
     photo.innerHTML = `<img src="${photoURL}" alt="${venue.name}">`;
+  } else if (logoId) {
+    // Falls back to the ⚾ emoji if the logo CDN ever fails to load.
+    photo.innerHTML = `<img src="https://www.mlbstatic.com/team-logos/${logoId}.svg" alt="${venue.group}" style="object-fit:contain;padding:14px;background:#fff;" onerror="this.outerHTML='⚾';">`;
   } else {
-    photo.textContent = "🎭";
+    photo.textContent = "⚾";
   }
   if (visited) {
     const badge = document.createElement("div");
@@ -296,16 +312,10 @@ function renderCard(venue) {
 
   const body = document.createElement("div");
   body.className = "card-body";
-  const searchQuery = encodeURIComponent(`${venue.name} Broadway now playing`);
-  const formerNamesHTML = (venue.formerNames && venue.formerNames.length)
-    ? `<div class="former-names">Formerly: ${venue.formerNames.join(", ")}</div>`
-    : "";
   body.innerHTML = `
     <div class="venue-name">${venue.name}</div>
     <div class="team-name">${venue.group}</div>
     <div class="city">${venue.location}</div>
-    ${formerNamesHTML}
-    <a class="whats-playing-link" href="https://www.google.com/search?q=${searchQuery}" target="_blank" rel="noopener noreferrer">What's playing? &rarr;</a>
   `;
   card.appendChild(body);
 
@@ -316,7 +326,7 @@ function renderCard(venue) {
       summary.className = "card-summary";
       const bits = [];
       if (v0.date) bits.push(formatDate(v0.date));
-      if (v0.opponent) bits.push(v0.opponent);
+      if (v0.opponent) bits.push(`vs ${v0.opponent}`);
       if (v0.withWho) bits.push(`with ${v0.withWho}`);
       summary.textContent = bits.join(" · ");
       card.appendChild(summary);
@@ -327,7 +337,7 @@ function renderCard(venue) {
     const last = sortVisitsByDate(visits)[0];
     const lastBits = [];
     if (last.date) lastBits.push(formatDate(last.date));
-    if (last.opponent) lastBits.push(last.opponent);
+    if (last.opponent) lastBits.push(`vs ${last.opponent}`);
     summary.textContent = `${visits.length} visits` + (lastBits.length ? ` · latest: ${lastBits.join(", ")}` : "");
     card.appendChild(summary);
   }
@@ -369,10 +379,7 @@ function formatDate(iso) {
 function openModal(venue) {
   activeVenueId = venue.id;
   modalTitle.textContent = venue.name;
-  const formerLine = (venue.formerNames && venue.formerNames.length)
-    ? `<br><span class="former-names">Formerly: ${venue.formerNames.join(", ")}</span>`
-    : "";
-  modalSub.innerHTML = `${venue.group} — ${venue.location}${formerLine}`;
+  modalSub.textContent = `${venue.group} — ${venue.location}`;
   modalVisited.checked = !!(visitsData[venue.id] || {}).visited;
   closeVisitForm();
   renderVisitsList();
@@ -413,19 +420,19 @@ function renderVisitsList() {
 
     const thumb = document.createElement("div");
     thumb.className = "visit-row-photo";
-    thumb.innerHTML = entry.photoURL ? `<img src="${entry.photoURL}" alt="">` : "🎭";
+    thumb.innerHTML = entry.photoURL ? `<img src="${entry.photoURL}" alt="">` : "⚾";
     row.appendChild(thumb);
 
     const bodyEl = document.createElement("div");
     bodyEl.className = "visit-row-body";
     const titleBits = [];
     if (entry.date) titleBits.push(formatDate(entry.date));
-    if (entry.opponent) titleBits.push(entry.opponent);
+    if (entry.opponent) titleBits.push(`vs ${entry.opponent}`);
     const subBits = [];
     if (entry.score) subBits.push(entry.score);
     if (entry.withWho) subBits.push(`with ${entry.withWho}`);
     bodyEl.innerHTML = `
-      <div class="visit-row-title">${titleBits.length ? titleBits.join(" — ") : "No date/show logged"}</div>
+      <div class="visit-row-title">${titleBits.length ? titleBits.join(" — ") : "No date/opponent logged"}</div>
       ${subBits.length ? `<div class="visit-row-sub">${subBits.join(" · ")}</div>` : ""}
       ${entry.notes ? `<div class="visit-row-notes">${entry.notes}</div>` : ""}
     `;
@@ -494,7 +501,7 @@ visitFormSave.addEventListener("click", async () => {
     let photoURL = existingIndex >= 0 ? (visits[existingIndex].photoURL || null) : null;
 
     if (pendingPhotoFile) {
-      const path = `users/${currentUser.uid}/${STORAGE_PREFIX}/${activeVenueId}/${Date.now()}_${pendingPhotoFile.name}`;
+      const path = `users/${currentUser.uid}/${activeVenueId}/${Date.now()}_${pendingPhotoFile.name}`;
       const storageRef = ref(storage, path);
       await uploadBytes(storageRef, pendingPhotoFile);
       photoURL = await getDownloadURL(storageRef);
@@ -563,7 +570,6 @@ searchInput.addEventListener("input", () => {
 // ---------- Export ----------
 exportBtn.addEventListener("click", () => {
   const rows = VENUES.map(v => ({
-    id: v.id,
     venue: v.name,
     team: v.group,
     location: v.location,
@@ -573,71 +579,11 @@ exportBtn.addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "broadway-tracker-export.json";
+  a.download = "ballpark-tracker-export.json";
   // Safari/Firefox silently ignore .click() on an <a download> that isn't in the
   // document — it has to be attached, clicked, then removed.
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-});
-
-// ---------- Import ----------
-// Bulk-loads visit records from a JSON file — an array of objects like:
-// [{ "id": "gershwin", "visited": true, "date": null, "opponent": "Wicked",
-//    "score": null, "withWho": null, "notes": null }, ...]
-// Matches each entry to a venue by "id" (see venues.js for valid ids) and writes
-// it to Firestore using your current signed-in session — same as any manual save.
-// Existing photos are preserved (import files don't carry photos).
-importBtn.addEventListener("click", () => {
-  if (!currentUser) { toast("Sign in first"); return; }
-  importInput.click();
-});
-
-importInput.addEventListener("change", async () => {
-  const file = importInput.files[0];
-  importInput.value = "";
-  if (!file) return;
-
-  let rows;
-  try {
-    rows = JSON.parse(await file.text());
-    if (!Array.isArray(rows)) throw new Error("Expected a JSON array");
-  } catch (err) {
-    toast("Couldn't read that file: " + err.message);
-    return;
-  }
-
-  const validIds = new Set(VENUES.map(v => v.id));
-  const matched = rows.filter(r => r && validIds.has(r.id));
-  const unmatched = rows.length - matched.length;
-
-  if (matched.length === 0) {
-    toast("No matching venue ids found in that file");
-    return;
-  }
-  if (!confirm(`Import ${matched.length} record(s)${unmatched ? ` (${unmatched} unmatched, skipped)` : ""}? This will overwrite existing details for any matching venues (photos are kept).`)) {
-    return;
-  }
-
-  let ok = 0, failed = 0;
-  for (const row of matched) {
-    try {
-      const existingPhoto = (visitsData[row.id] || {}).photoURL || null;
-      await saveVisit(row.id, {
-        visited: !!row.visited,
-        date: row.date || null,
-        opponent: row.opponent || null,
-        score: row.score || null,
-        withWho: row.withWho || null,
-        notes: row.notes || null,
-        photoURL: existingPhoto,
-      });
-      ok++;
-    } catch (err) {
-      console.error("Import failed for", row.id, err);
-      failed++;
-    }
-  }
-  toast(`Imported ${ok} record(s)${failed ? `, ${failed} failed` : ""}`);
 });
