@@ -24,7 +24,8 @@ const configWarning = document.getElementById("config-warning");
 const loginBtn = document.getElementById("login-btn");
 const divisionsContainer = document.getElementById("divisions-container");
 const searchInput = document.getElementById("search-input");
-const chips = document.querySelectorAll(".chip");
+const chips = document.querySelectorAll(".chip:not(.sort-chip)");
+const sortChips = document.querySelectorAll(".sort-chip");
 const visitedCountEl = document.getElementById("visited-count");
 const progressFill = document.getElementById("progress-fill");
 const formerCountEl = document.getElementById("former-count");
@@ -87,6 +88,10 @@ let pendingPhotoFile = null;
 let activeVenueId = null;
 let editingVisitId = null;   // id of the visit entry currently open in visit-form, or null when adding new
 let currentFilter = "all";
+// "division" groups the 30 current ballparks into AL/NL divisions (default);
+// "alphabetical" flattens just those into one A-Z list. Former Ballparks and
+// Minor League sections are unaffected either way — remembered across visits.
+let sortMode = localStorage.getItem("ballparkSortMode") || "division";
 let searchTerm = "";
 
 // ---------- Visits array helpers ----------
@@ -281,7 +286,30 @@ function renderAll() {
   divisionsContainer.innerHTML = "";
   let anyShown = false;
 
+  // Former Ballparks and Minor League always stay their own sections; only the
+  // 30 current MLB divisions collapse into one A-Z list in alphabetical mode.
+  const specialDivisions = new Set(["Former Ballparks", "Minor League (Triple-A)"]);
+
+  if (sortMode === "alphabetical") {
+    const mlbVenues = VENUES.filter(v => !specialDivisions.has(v.division) && matchesFilters(v))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (mlbVenues.length > 0) {
+      anyShown = true;
+      const section = document.createElement("div");
+      section.className = "division";
+      const h3 = document.createElement("h3");
+      h3.textContent = "All 30 Ballparks (A–Z)";
+      section.appendChild(h3);
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      mlbVenues.forEach((venue) => grid.appendChild(renderCard(venue)));
+      section.appendChild(grid);
+      divisionsContainer.appendChild(section);
+    }
+  }
+
   DIVISION_ORDER.forEach((division) => {
+    if (sortMode === "alphabetical" && !specialDivisions.has(division)) return; // already rendered above
     const venuesInDiv = VENUES.filter(v => v.division === division && matchesFilters(v));
     if (venuesInDiv.length === 0) return;
     anyShown = true;
@@ -652,6 +680,19 @@ chips.forEach((chip) => {
     renderAll();
   });
 });
+
+sortChips.forEach((chip) => {
+  chip.addEventListener("click", () => {
+    sortChips.forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    sortMode = chip.dataset.sort;
+    localStorage.setItem("ballparkSortMode", sortMode);
+    renderAll();
+  });
+});
+if (sortMode === "alphabetical") {
+  sortChips.forEach(c => c.classList.toggle("active", c.dataset.sort === "alphabetical"));
+}
 
 searchInput.addEventListener("input", () => {
   searchTerm = searchInput.value.trim().toLowerCase();
