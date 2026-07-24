@@ -28,6 +28,8 @@ const chips = document.querySelectorAll(".chip");
 const visitedCountEl = document.getElementById("visited-count");
 const progressFill = document.getElementById("progress-fill");
 const formerCountEl = document.getElementById("former-count");
+const minorCountEl = document.getElementById("minor-count");
+const battingAvgEl = document.getElementById("batting-avg");
 const exportBtn = document.getElementById("export-btn");
 
 const modalOverlay = document.getElementById("modal-overlay");
@@ -40,8 +42,13 @@ const addVisitBtn = document.getElementById("add-visit-btn");
 const visitForm = document.getElementById("visit-form");
 const photoInput = document.getElementById("photo-input");
 const photoPreview = document.getElementById("photo-preview");
+const photoOffsetRow = document.getElementById("photo-offset-row");
+const photoOffsetInput = document.getElementById("photo-offset");
 const fieldDate = document.getElementById("field-date");
+const fieldEventType = document.getElementById("field-event-type");
+const fieldOpponentLabel = document.getElementById("field-opponent-label");
 const fieldOpponent = document.getElementById("field-opponent");
+const fieldScoreRow = document.getElementById("field-score-row");
 const fieldScore = document.getElementById("field-score");
 const fieldWith = document.getElementById("field-with");
 const fieldNotes = document.getElementById("field-notes");
@@ -120,6 +127,16 @@ function getMostRecentPhoto(visits) {
   const sorted = sortVisitsByDate(visits);
   for (const v of sorted) {
     if (v.photoURL) return v.photoURL;
+  }
+  return null;
+}
+
+// Same as getMostRecentPhoto, but returns the whole entry (so the card can also
+// read its photoOffsetY for repositioning) instead of just the URL string.
+function getMostRecentPhotoEntry(visits) {
+  const sorted = sortVisitsByDate(visits);
+  for (const v of sorted) {
+    if (v.photoURL) return v;
   }
   return null;
 }
@@ -235,16 +252,29 @@ function matchesFilters(venue) {
 
 function renderAll() {
   // stats — only the active/current stadiums count toward the main "of 30" stat;
-  // former ballparks (current: false) still get tracked below but don't count here.
+  // former ballparks and minor league parks (current: false) still get tracked
+  // below but don't count here.
   const currentVenues = VENUES.filter(v => v.current !== false);
   const totalVisited = currentVenues.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
   visitedCountEl.textContent = totalVisited;
   progressFill.style.width = `${Math.round((totalVisited / currentVenues.length) * 100)}%`;
 
-  const formerVenues = VENUES.filter(v => v.current === false);
+  // Batting-average-style stat: parks visited / 30, formatted like a batting
+  // average (.XXX, no leading zero — a shutout is .000, a perfect run is 1.000).
+  const avg = totalVisited / currentVenues.length;
+  const avgStr = avg >= 1 ? "1.000" : avg.toFixed(3).replace(/^0/, "");
+  battingAvgEl.textContent = `Batting ${avgStr}`;
+
+  const formerVenues = VENUES.filter(v => v.current === false && !v.minorLeague);
   const formerVisited = formerVenues.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
   formerCountEl.textContent = formerVisited > 0
     ? `+ ${formerVisited} of ${formerVenues.length} former ballparks`
+    : "";
+
+  const minorVenues = VENUES.filter(v => v.minorLeague);
+  const minorVisited = minorVenues.filter(v => visitsData[v.id] && visitsData[v.id].visited).length;
+  minorCountEl.textContent = minorVisited > 0
+    ? `+ ${minorVisited} of ${minorVenues.length} Triple-A parks`
     : "";
 
   // divisions
@@ -268,6 +298,12 @@ function renderAll() {
       note.textContent = "Demolished/replaced stadiums — tracked here for fun, not counted in the 30 above.";
       section.appendChild(note);
     }
+    if (division === "Minor League (Triple-A)") {
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:0.78rem;color:var(--muted);margin:-6px 0 12px 2px;";
+      note.textContent = "All 30 current Triple-A ballparks — tracked here for fun, not counted in the 30 above.";
+      section.appendChild(note);
+    }
 
     const grid = document.createElement("div");
     grid.className = "grid";
@@ -286,7 +322,9 @@ function renderCard(venue) {
   const v = visitsData[venue.id] || {};
   const visited = !!v.visited;
   const visits = getVisitsArray(venue.id);
-  const photoURL = getMostRecentPhoto(visits);
+  const photoEntry = getMostRecentPhotoEntry(visits);
+  const photoURL = photoEntry ? photoEntry.photoURL : null;
+  const photoOffsetY = photoEntry && photoEntry.photoOffsetY != null ? photoEntry.photoOffsetY : 50;
 
   const card = document.createElement("div");
   card.className = "card" + (visited ? " visited" : "");
@@ -295,7 +333,7 @@ function renderCard(venue) {
   photo.className = "card-photo";
   const logoId = TEAM_LOGOS[venue.group];
   if (photoURL) {
-    photo.innerHTML = `<img src="${photoURL}" alt="${venue.name}">`;
+    photo.innerHTML = `<img src="${photoURL}" alt="${venue.name}" style="object-position:center ${photoOffsetY}%;">`;
   } else if (logoId) {
     // Falls back to the ⚾ emoji if the logo CDN ever fails to load.
     photo.innerHTML = `<img src="https://www.mlbstatic.com/team-logos/${logoId}.svg" alt="${venue.group}" style="object-fit:contain;padding:14px;background:#fff;" onerror="this.outerHTML='⚾';">`;
@@ -326,7 +364,8 @@ function renderCard(venue) {
       summary.className = "card-summary";
       const bits = [];
       if (v0.date) bits.push(formatDate(v0.date));
-      if (v0.opponent) bits.push(`vs ${v0.opponent}`);
+      const opponentBit = formatOpponentBit(v0);
+      if (opponentBit) bits.push(opponentBit);
       if (v0.withWho) bits.push(`with ${v0.withWho}`);
       summary.textContent = bits.join(" · ");
       card.appendChild(summary);
@@ -337,7 +376,8 @@ function renderCard(venue) {
     const last = sortVisitsByDate(visits)[0];
     const lastBits = [];
     if (last.date) lastBits.push(formatDate(last.date));
-    if (last.opponent) lastBits.push(`vs ${last.opponent}`);
+    const lastOpponentBit = formatOpponentBit(last);
+    if (lastOpponentBit) lastBits.push(lastOpponentBit);
     summary.textContent = `${visits.length} visits` + (lastBits.length ? ` · latest: ${lastBits.join(", ")}` : "");
     card.appendChild(summary);
   }
@@ -366,6 +406,15 @@ function renderCard(venue) {
 
   card.appendChild(footer);
   return card;
+}
+
+// Formats the opponent/artist/event text with the right prefix for the type
+// of visit, since the same field means different things depending on eventType.
+function formatOpponentBit(entry) {
+  if (!entry.opponent) return null;
+  if (entry.eventType === "concert") return `🎤 ${entry.opponent}`;
+  if (entry.eventType === "other") return entry.opponent;
+  return `vs ${entry.opponent}`;
 }
 
 function formatDate(iso) {
@@ -420,14 +469,16 @@ function renderVisitsList() {
 
     const thumb = document.createElement("div");
     thumb.className = "visit-row-photo";
-    thumb.innerHTML = entry.photoURL ? `<img src="${entry.photoURL}" alt="">` : "⚾";
+    const thumbOffsetY = entry.photoOffsetY != null ? entry.photoOffsetY : 50;
+    thumb.innerHTML = entry.photoURL ? `<img src="${entry.photoURL}" alt="" style="object-position:center ${thumbOffsetY}%;">` : "⚾";
     row.appendChild(thumb);
 
     const bodyEl = document.createElement("div");
     bodyEl.className = "visit-row-body";
     const titleBits = [];
     if (entry.date) titleBits.push(formatDate(entry.date));
-    if (entry.opponent) titleBits.push(`vs ${entry.opponent}`);
+    const rowOpponentBit = formatOpponentBit(entry);
+    if (rowOpponentBit) titleBits.push(rowOpponentBit);
     const subBits = [];
     if (entry.score) subBits.push(entry.score);
     if (entry.withWho) subBits.push(`with ${entry.withWho}`);
@@ -456,16 +507,46 @@ function renderVisitsList() {
   });
 }
 
+// Adjusts field labels/visibility depending on whether this was a baseball
+// game, a concert, or some other event — same underlying opponent/score
+// storage fields, just relabeled so they make sense for what was logged.
+function applyEventTypeUI(type) {
+  if (type === "concert") {
+    fieldOpponentLabel.textContent = "Artist / act";
+    fieldOpponent.placeholder = "e.g. Dead & Company";
+    fieldScoreRow.style.display = "none";
+  } else if (type === "other") {
+    fieldOpponentLabel.textContent = "What was it?";
+    fieldOpponent.placeholder = "e.g. Stadium tour, graduation ceremony";
+    fieldScoreRow.style.display = "none";
+  } else {
+    fieldOpponentLabel.textContent = "Opponent";
+    fieldOpponent.placeholder = "e.g. Boston Red Sox";
+    fieldScoreRow.style.display = "block";
+  }
+}
+fieldEventType.addEventListener("change", () => applyEventTypeUI(fieldEventType.value));
+
 function openVisitForm(entry) {
   editingVisitId = entry ? entry.id : null;
   pendingPhotoFile = null;
   fieldDate.value = entry?.date || "";
+  fieldEventType.value = entry?.eventType || "game";
+  applyEventTypeUI(fieldEventType.value);
   fieldOpponent.value = entry?.opponent || "";
   fieldScore.value = entry?.score || "";
   fieldWith.value = entry?.withWho || "";
   fieldNotes.value = entry?.notes || "";
   photoInput.value = "";
-  photoPreview.innerHTML = entry?.photoURL ? `<img src="${entry.photoURL}" alt="">` : "📷 No photo yet";
+  const startOffset = entry?.photoOffsetY != null ? entry.photoOffsetY : 50;
+  photoOffsetInput.value = startOffset;
+  if (entry?.photoURL) {
+    photoPreview.innerHTML = `<img src="${entry.photoURL}" alt="" style="object-position:center ${startOffset}%;">`;
+    photoOffsetRow.style.display = "block";
+  } else {
+    photoPreview.innerHTML = "📷 No photo yet";
+    photoOffsetRow.style.display = "none";
+  }
   visitForm.style.display = "block";
   addVisitBtn.style.display = "none";
 }
@@ -484,11 +565,18 @@ photoInput.addEventListener("change", () => {
   const file = photoInput.files[0];
   if (!file) return;
   pendingPhotoFile = file;
+  photoOffsetInput.value = 50; // new photo — reset to centered until adjusted
+  photoOffsetRow.style.display = "block";
   const reader = new FileReader();
   reader.onload = (e) => {
-    photoPreview.innerHTML = `<img src="${e.target.result}" alt="">`;
+    photoPreview.innerHTML = `<img src="${e.target.result}" alt="" style="object-position:center 50%;">`;
   };
   reader.readAsDataURL(file);
+});
+
+photoOffsetInput.addEventListener("input", () => {
+  const img = photoPreview.querySelector("img");
+  if (img) img.style.objectPosition = `center ${photoOffsetInput.value}%`;
 });
 
 visitFormSave.addEventListener("click", async () => {
@@ -506,15 +594,18 @@ visitFormSave.addEventListener("click", async () => {
       await uploadBytes(storageRef, pendingPhotoFile);
       photoURL = await getDownloadURL(storageRef);
     }
+    const photoOffsetY = photoURL ? Number(photoOffsetInput.value) : null;
 
     const entry = {
       id: existingIndex >= 0 ? visits[existingIndex].id : `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       date: fieldDate.value || null,
+      eventType: fieldEventType.value || "game",
       opponent: fieldOpponent.value.trim() || null,
       score: fieldScore.value.trim() || null,
       withWho: fieldWith.value.trim() || null,
       notes: fieldNotes.value.trim() || null,
       photoURL: photoURL || null,
+      photoOffsetY: photoOffsetY,
     };
 
     if (existingIndex >= 0) {
